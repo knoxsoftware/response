@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "respond.name" . }}-migrate-{{ .Release.Revision }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  template:
+    spec:
+      serviceAccountName: {{ include "respond.serviceAccountName" . }}
+      restartPolicy: OnFailure
+      {{- if and .Values.database.enabled (not .Values.secrets.databaseUrl) }}
+      initContainers:
+        - name: wait-for-db
+          image: bitnami/kubectl:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for database secret {{ include "respond.name" . }}-db-app..."
+              until kubectl get secret {{ include "respond.name" . }}-db-app -n {{ .Release.Namespace }} > /dev/null 2>&1; do
+                echo "Secret not found, retrying in 5s..."
+                sleep 5
+              done
+              echo "Database secret found."
+      {{- end }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: Always
+          command: ["/migrate"]
+          envFrom:
+            - secretRef:
+                name: {{ include "respond.name" . }}
+          env:
+            {{- if and .Values.database.enabled (not .Values.secrets.databaseUrl) }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "respond.name" . }}-db-app
+                  key: uri
+            {{- end }}
+            - name: BASE_URL
+              value: {{ .Values.config.baseUrl | quote }}
+            - name: PORT
+              value: {{ .Values.config.port | quote }}

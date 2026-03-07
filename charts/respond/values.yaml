@@ -1,0 +1,37 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/your-org/respond
+  pullPolicy: IfNotPresent
+  tag: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: respond.example.com
+  tls: []
+
+config:
+  baseUrl: "https://respond.example.com"
+  port: "8080"
+
+secrets:
+  # databaseUrl: ""      # Optional: overrides the CNPG-generated database URL when database.enabled=true, or required when database.enabled=false
+  twilioAuthToken: ""
+  # bootstrapAdmins: ""  # Optional: comma-separated phone:pin pairs to seed on startup, e.g. "+15551234567:1234,+15559876543:5678"
+
+serviceAccount:
+  create: true
+  name: ""
+  imagePullSecrets: []
+
+database:
+  enabled: true
+  instances: 2
+  storage:
+    size: 1Gi
+    storageClass: ""

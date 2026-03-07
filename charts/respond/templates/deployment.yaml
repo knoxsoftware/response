@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "respond.name" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "respond.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "respond.name" . }}
+      annotations:
+        rollme: {{ .Release.Revision | quote }}
+    spec:
+      serviceAccountName: {{ include "respond.serviceAccountName" . }}
+      containers:
+        - name: respond
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          ports:
+            - containerPort: {{ .Values.service.port }}
+          envFrom:
+            - secretRef:
+                name: {{ include "respond.name" . }}
+          env:
+            {{- if and .Values.database.enabled (not .Values.secrets.databaseUrl) }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "respond.name" . }}-db-app
+                  key: uri
+            {{- end }}
+            - name: BASE_URL
+              value: {{ .Values.config.baseUrl | quote }}
+            - name: PORT
+              value: {{ .Values.config.port | quote }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.service.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
