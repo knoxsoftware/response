@@ -29,8 +29,6 @@ func (h *VoiceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	responder, err := h.Responders.FindByPhone(ctx, from)
 
 	switch {
-	case err == nil && responder.IsAdmin:
-		h.startAdminFlow(w, r, ctx, responder, callSid)
 	case err == nil:
 		h.startResponderFlow(w, r, ctx, responder, callSid)
 	default:
@@ -77,21 +75,4 @@ func (h *VoiceHandler) startResponderFlow(w http.ResponseWriter, r *http.Request
 		log.Printf("upsert session: %v", err)
 	}
 	w.Write([]byte(twiml.Gather("Please enter your PIN followed by the pound sign.", h.BaseURL+"/twilio/voice/gather", 0)))
-}
-
-func (h *VoiceHandler) startAdminFlow(w http.ResponseWriter, r *http.Request, ctx context.Context, responder *store.Responder, callSid string) {
-	status := "unavailable"
-	if responder.Available {
-		status = "available"
-	}
-	sess := &store.Session{
-		CallSid: callSid,
-		Caller:  responder.PhoneNumber,
-		State:   store.SessionState{Step: "admin_responder_pre_pin", Pending: map[string]string{}},
-	}
-	if err := h.Sessions.Upsert(ctx, sess); err != nil {
-		log.Printf("upsert session: %v", err)
-	}
-	msg := "You are currently " + status + " as a responder. Press 1 to toggle your availability, or press 2 to continue to the admin menu."
-	w.Write([]byte(twiml.Gather(msg, h.BaseURL+"/twilio/voice/gather", 1)))
 }

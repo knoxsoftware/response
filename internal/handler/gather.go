@@ -52,28 +52,18 @@ func (h *GatherHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleResponderNewPIN(w, r, sess, digits)
 	case "responder_confirm_new_pin":
 		h.handleResponderConfirmNewPIN(w, r, sess, digits)
-	case "admin_responder_pre_pin":
-		h.handleAdminResponderPrePIN(w, r, sess, digits)
-	case "admin_pin":
-		h.handleAdminPIN(w, r, sess, digits)
 	case "admin_menu":
 		h.handleAdminMenu(w, r, sess, digits)
-	case "admin_add_number":
-		h.handleAdminAddNumber(w, r, sess, digits)
-	case "admin_add_name":
-		h.handleAdminAddName(w, r, sess, digits)
-	case "admin_remove_number":
-		h.handleAdminRemoveNumber(w, r, sess, digits)
+	case "admin_add_remove_number":
+		h.handleAdminAddRemoveNumber(w, r, sess, digits)
+	case "admin_add_remove_confirm":
+		h.handleAdminAddRemoveConfirm(w, r, sess, digits)
 	case "admin_change_number":
 		h.handleAdminChangeAvailNumber(w, r, sess, digits)
-	case "admin_new_pin":
-		h.handleAdminNewPIN(w, r, sess, digits)
-	case "admin_confirm_pin":
-		h.handleAdminConfirmPIN(w, r, sess, digits)
-	case "admin_promote_number":
-		h.handleAdminPromoteNumber(w, r, sess, digits)
-	case "admin_demote_number":
-		h.handleAdminDemoteNumber(w, r, sess, digits)
+	case "admin_toggle_admin_number":
+		h.handleAdminToggleAdminNumber(w, r, sess, digits)
+	case "admin_toggle_admin_confirm":
+		h.handleAdminToggleAdminConfirm(w, r, sess, digits)
 	default:
 		w.Write([]byte(twiml.Say("Unknown state. Goodbye.")))
 	}
@@ -117,7 +107,7 @@ func (h *GatherHandler) handleResponderConfirmPIN(w http.ResponseWriter, r *http
 	sess.State.Step = "responder_menu"
 	sess.State.Pending = map[string]string{}
 	h.Sessions.Upsert(ctx, sess)
-	w.Write([]byte(twiml.Gather(responderMenuPrompt(resp.Available), h.BaseURL+"/twilio/voice/gather", 1)))
+	w.Write([]byte(twiml.Gather(responderMenuPrompt(resp.Available, resp.IsAdmin), h.BaseURL+"/twilio/voice/gather", 1)))
 }
 
 func (h *GatherHandler) handleResponderPIN(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
@@ -129,15 +119,19 @@ func (h *GatherHandler) handleResponderPIN(w http.ResponseWriter, r *http.Reques
 	}
 	sess.State.Step = "responder_menu"
 	h.Sessions.Upsert(ctx, sess)
-	w.Write([]byte(twiml.Gather(responderMenuPrompt(resp.Available), h.BaseURL+"/twilio/voice/gather", 1)))
+	w.Write([]byte(twiml.Gather(responderMenuPrompt(resp.Available, resp.IsAdmin), h.BaseURL+"/twilio/voice/gather", 1)))
 }
 
-func responderMenuPrompt(available bool) string {
+func responderMenuPrompt(available bool, isAdmin bool) string {
 	status := "unavailable"
 	if available {
 		status = "available"
 	}
-	return "You are currently " + status + ". Press 1 to toggle your availability. Press 2 to change your PIN."
+	msg := "You are currently " + status + ". Press 1 to toggle your availability. Press 2 to change your PIN."
+	if isAdmin {
+		msg += " Press 3 for the admin menu."
+	}
+	return msg
 }
 
 func (h *GatherHandler) handleResponderMenu(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
@@ -160,6 +154,15 @@ func (h *GatherHandler) handleResponderMenu(w http.ResponseWriter, r *http.Reque
 		sess.State.Pending = map[string]string{}
 		h.Sessions.Upsert(ctx, sess)
 		w.Write([]byte(twiml.Gather("Please enter your new PIN followed by the pound sign.", h.BaseURL+"/twilio/voice/gather", 0)))
+	case "3":
+		resp, err := h.Responders.FindByPhone(ctx, sess.Caller)
+		if err != nil || !resp.IsAdmin {
+			w.Write([]byte(twiml.Say("Invalid selection. Goodbye.")))
+			return
+		}
+		sess.State.Step = "admin_menu"
+		h.Sessions.Upsert(ctx, sess)
+		w.Write([]byte(twiml.Gather(adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
 	default:
 		resp, err := h.Responders.FindByPhone(ctx, sess.Caller)
 		if err != nil {
@@ -168,7 +171,7 @@ func (h *GatherHandler) handleResponderMenu(w http.ResponseWriter, r *http.Reque
 		}
 		sess.State.Step = "responder_menu"
 		h.Sessions.Upsert(ctx, sess)
-		w.Write([]byte(twiml.Gather("Invalid selection. "+responderMenuPrompt(resp.Available), h.BaseURL+"/twilio/voice/gather", 1)))
+		w.Write([]byte(twiml.Gather("Invalid selection. "+responderMenuPrompt(resp.Available, resp.IsAdmin), h.BaseURL+"/twilio/voice/gather", 1)))
 	}
 }
 
@@ -195,7 +198,7 @@ func (h *GatherHandler) handleResponderConfirmNewPIN(w http.ResponseWriter, r *h
 			w.Write([]byte(twiml.Say("Error loading account. Goodbye.")))
 			return
 		}
-		w.Write([]byte(twiml.Gather("PINs did not match. "+responderMenuPrompt(resp.Available), h.BaseURL+"/twilio/voice/gather", 1)))
+		w.Write([]byte(twiml.Gather("PINs did not match. "+responderMenuPrompt(resp.Available, resp.IsAdmin), h.BaseURL+"/twilio/voice/gather", 1)))
 		return
 	}
 	if err := h.Responders.UpdatePIN(ctx, sess.Caller, newPIN); err != nil {
@@ -206,59 +209,19 @@ func (h *GatherHandler) handleResponderConfirmNewPIN(w http.ResponseWriter, r *h
 	w.Write([]byte(twiml.Say("Your PIN has been updated. Goodbye.")))
 }
 
-func (h *GatherHandler) handleAdminResponderPrePIN(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
-	ctx := r.Context()
-	if digits == "1" {
-		newState, err := h.Responders.ToggleAvailable(ctx, sess.Caller)
-		if err != nil {
-			log.Printf("pre-pin toggle: %v", err)
-		} else {
-			status := "unavailable"
-			if newState {
-				status = "available"
-			}
-			log.Printf("[pre_pin] toggled %s to %s", sess.Caller, status)
-		}
-	}
-	sess.State.Step = "admin_pin"
-	if err := h.Sessions.Upsert(ctx, sess); err != nil {
-		log.Printf("upsert session: %v", err)
-	}
-	w.Write([]byte(twiml.Gather("Please enter your PIN followed by the pound sign.", h.BaseURL+"/twilio/voice/gather", 6)))
-}
-
-func (h *GatherHandler) handleAdminPIN(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
-	ctx := r.Context()
-	responder, err := h.Responders.FindByPhone(ctx, sess.Caller)
-	if err != nil || !responder.VerifyPIN(digits) {
-		w.Write([]byte(twiml.Say("Incorrect PIN. Goodbye.")))
-		return
-	}
-	sess.State.Step = "admin_menu"
-	if err := h.Sessions.Upsert(ctx, sess); err != nil {
-		log.Printf("upsert session: %v", err)
-	}
-	w.Write([]byte(twiml.Gather(adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
-}
-
 func adminMenuPrompt() string {
-	return "Admin menu. Press 1 to add a responder. Press 2 to remove a responder. Press 3 to list all responders. Press 4 to change a responder's availability. Press 5 for responder status summary. Press 6 to change your PIN. Press 7 to promote a responder to admin. Press 8 to demote an admin to responder."
+	return "Admin menu. Press 1 to add or remove a responder. Press 2 to list all responders. Press 3 to change a responder's availability. Press 4 for responder status summary. Press 5 to promote or demote admin."
 }
 
 func (h *GatherHandler) handleAdminMenu(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
 	ctx := r.Context()
 	switch digits {
 	case "1":
-		sess.State.Step = "admin_add_number"
+		sess.State.Step = "admin_add_remove_number"
 		sess.State.Pending = map[string]string{}
 		h.Sessions.Upsert(ctx, sess)
-		w.Write([]byte(twiml.Gather("Enter the 10-digit phone number of the new responder, followed by pound.", h.BaseURL+"/twilio/voice/gather", 0)))
+		w.Write([]byte(twiml.Gather("Enter the 10-digit phone number, followed by pound.", h.BaseURL+"/twilio/voice/gather", 0)))
 	case "2":
-		sess.State.Step = "admin_remove_number"
-		sess.State.Pending = map[string]string{}
-		h.Sessions.Upsert(ctx, sess)
-		w.Write([]byte(twiml.Gather("Enter the 10-digit phone number of the responder to remove, followed by pound.", h.BaseURL+"/twilio/voice/gather", 0)))
-	case "3":
 		responders, err := h.Responders.ListAll(ctx)
 		if err != nil {
 			w.Write([]byte(twiml.Say("Error retrieving list. Goodbye.")))
@@ -285,27 +248,12 @@ func (h *GatherHandler) handleAdminMenu(w http.ResponseWriter, r *http.Request, 
 		sess.State.Step = "admin_menu"
 		h.Sessions.Upsert(ctx, sess)
 		w.Write([]byte(twiml.Gather(msg, h.BaseURL+"/twilio/voice/gather", 1)))
-	case "4":
+	case "3":
 		sess.State.Step = "admin_change_number"
 		sess.State.Pending = map[string]string{}
 		h.Sessions.Upsert(ctx, sess)
 		w.Write([]byte(twiml.Gather("Enter the 10-digit phone number of the responder to update, followed by pound.", h.BaseURL+"/twilio/voice/gather", 0)))
-	case "6":
-		sess.State.Step = "admin_new_pin"
-		sess.State.Pending = map[string]string{}
-		h.Sessions.Upsert(ctx, sess)
-		w.Write([]byte(twiml.Gather("Please enter your new PIN followed by the pound sign.", h.BaseURL+"/twilio/voice/gather", 6)))
-	case "7":
-		sess.State.Step = "admin_promote_number"
-		sess.State.Pending = map[string]string{}
-		h.Sessions.Upsert(ctx, sess)
-		w.Write([]byte(twiml.Gather("Enter the 10-digit phone number of the responder to promote to admin, followed by pound.", h.BaseURL+"/twilio/voice/gather", 0)))
-	case "8":
-		sess.State.Step = "admin_demote_number"
-		sess.State.Pending = map[string]string{}
-		h.Sessions.Upsert(ctx, sess)
-		w.Write([]byte(twiml.Gather("Enter the 10-digit phone number of the admin to demote to responder, followed by pound.", h.BaseURL+"/twilio/voice/gather", 0)))
-	case "5":
+	case "4":
 		active, inactive, err := h.Responders.CountByAvailability(ctx)
 		if err != nil {
 			log.Printf("count availability: %v", err)
@@ -315,58 +263,79 @@ func (h *GatherHandler) handleAdminMenu(w http.ResponseWriter, r *http.Request, 
 		sess.State.Step = "admin_menu"
 		h.Sessions.Upsert(ctx, sess)
 		w.Write([]byte(twiml.Gather(fmt.Sprintf("%d active, %d inactive. %s", active, inactive, adminMenuPrompt()), h.BaseURL+"/twilio/voice/gather", 1)))
+	case "5":
+		sess.State.Step = "admin_toggle_admin_number"
+		sess.State.Pending = map[string]string{}
+		h.Sessions.Upsert(ctx, sess)
+		w.Write([]byte(twiml.Gather("Enter the 10-digit phone number, followed by pound.", h.BaseURL+"/twilio/voice/gather", 0)))
 	default:
 		w.Write([]byte(twiml.Gather("Invalid selection. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
 	}
 }
 
-func (h *GatherHandler) handleAdminAddNumber(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
+func (h *GatherHandler) handleAdminAddRemoveNumber(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
 	ctx := r.Context()
 	if !isValidUSPhone(digits) {
-		sess.State.Step = "admin_add_number"
+		sess.State.Step = "admin_add_remove_number"
 		h.Sessions.Upsert(ctx, sess)
 		w.Write([]byte(twiml.Gather("Invalid phone number. Please enter a 10-digit US phone number followed by pound.", h.BaseURL+"/twilio/voice/gather", 0)))
 		return
 	}
 	phone := normalizePhone(digits)
-	log.Printf("[add_number] digits=%q normalized=%s", digits, phone)
-	sess.State.Step = "admin_add_name"
 	if sess.State.Pending == nil {
 		sess.State.Pending = map[string]string{}
 	}
 	sess.State.Pending["phone"] = phone
-	if err := h.Sessions.Upsert(ctx, sess); err != nil {
-		log.Printf("[add_number] upsert session: %v", err)
+
+	existing, err := h.Responders.FindByPhone(ctx, phone)
+	if err != nil {
+		// Not found — offer to add
+		sess.State.Pending["action"] = "add"
+		sess.State.Step = "admin_add_remove_confirm"
+		h.Sessions.Upsert(ctx, sess)
+		w.Write([]byte(twiml.Gather("Press 1 to add "+sayPhone(phone)+", or hang up to cancel.", h.BaseURL+"/twilio/voice/gather", 1)))
+	} else {
+		_ = existing
+		// Found — offer to remove
+		sess.State.Pending["action"] = "remove"
+		sess.State.Step = "admin_add_remove_confirm"
+		h.Sessions.Upsert(ctx, sess)
+		w.Write([]byte(twiml.Gather(sayPhone(phone)+" is already a responder. Press 1 to remove them, or hang up to cancel.", h.BaseURL+"/twilio/voice/gather", 1)))
 	}
-	resp := twiml.Gather("Got it. Press any key to confirm adding "+sayPhone(phone)+", or hang up to cancel.", h.BaseURL+"/twilio/voice/gather", 1)
-	log.Printf("[add_number] responding with TwiML: %s", resp)
-	w.Write([]byte(resp))
 }
 
-func (h *GatherHandler) handleAdminAddName(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
+func (h *GatherHandler) handleAdminAddRemoveConfirm(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
 	ctx := r.Context()
-	phone := sess.State.Pending["phone"]
-	if err := h.Responders.Create(ctx, phone); err != nil {
-		log.Printf("create responder: %v", err)
+	if digits != "1" {
 		sess.State.Step = "admin_menu"
 		h.Sessions.Upsert(ctx, sess)
-		w.Write([]byte(twiml.Gather("Error adding responder. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
+		w.Write([]byte(twiml.Gather("Cancelled. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
 		return
 	}
+	phone := sess.State.Pending["phone"]
+	action := sess.State.Pending["action"]
 	sess.State.Step = "admin_menu"
+	sess.State.Pending = map[string]string{}
 	h.Sessions.Upsert(ctx, sess)
-	w.Write([]byte(twiml.Gather("Responder "+sayPhone(phone)+" added. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
-}
 
-func (h *GatherHandler) handleAdminRemoveNumber(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
-	ctx := r.Context()
-	phone := normalizePhone(digits)
-	if err := h.Responders.Delete(ctx, phone); err != nil {
-		log.Printf("delete responder: %v", err)
+	switch action {
+	case "add":
+		if err := h.Responders.Create(ctx, phone); err != nil {
+			log.Printf("create responder: %v", err)
+			w.Write([]byte(twiml.Gather("Error adding responder. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
+			return
+		}
+		w.Write([]byte(twiml.Gather("Responder "+sayPhone(phone)+" added. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
+	case "remove":
+		if err := h.Responders.Delete(ctx, phone); err != nil {
+			log.Printf("delete responder: %v", err)
+			w.Write([]byte(twiml.Gather("Error removing responder. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
+			return
+		}
+		w.Write([]byte(twiml.Gather("Responder "+sayPhone(phone)+" removed. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
+	default:
+		w.Write([]byte(twiml.Gather("Unknown action. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
 	}
-	sess.State.Step = "admin_menu"
-	h.Sessions.Upsert(ctx, sess)
-	w.Write([]byte(twiml.Gather("Responder "+sayPhone(phone)+" removed. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
 }
 
 func (h *GatherHandler) handleAdminChangeAvailNumber(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
@@ -389,69 +358,72 @@ func (h *GatherHandler) handleAdminChangeAvailNumber(w http.ResponseWriter, r *h
 	w.Write([]byte(twiml.Gather(sayPhone(phone)+" is now "+status+". "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
 }
 
-func (h *GatherHandler) handleAdminNewPIN(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
+func (h *GatherHandler) handleAdminToggleAdminNumber(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
 	ctx := r.Context()
+	if !isValidUSPhone(digits) {
+		sess.State.Step = "admin_toggle_admin_number"
+		h.Sessions.Upsert(ctx, sess)
+		w.Write([]byte(twiml.Gather("Invalid phone number. Please enter a 10-digit US phone number followed by pound.", h.BaseURL+"/twilio/voice/gather", 0)))
+		return
+	}
+	phone := normalizePhone(digits)
 	if sess.State.Pending == nil {
 		sess.State.Pending = map[string]string{}
 	}
-	sess.State.Pending["new_pin"] = digits
-	sess.State.Step = "admin_confirm_pin"
-	h.Sessions.Upsert(ctx, sess)
-	w.Write([]byte(twiml.Gather("Please enter your new PIN again to confirm, followed by the pound sign.", h.BaseURL+"/twilio/voice/gather", 6)))
+	sess.State.Pending["phone"] = phone
+
+	resp, err := h.Responders.FindByPhone(ctx, phone)
+	if err != nil {
+		sess.State.Step = "admin_menu"
+		h.Sessions.Upsert(ctx, sess)
+		w.Write([]byte(twiml.Gather("Responder not found. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
+		return
+	}
+
+	sess.State.Step = "admin_toggle_admin_confirm"
+	if resp.IsAdmin {
+		sess.State.Pending["action"] = "demote"
+		h.Sessions.Upsert(ctx, sess)
+		w.Write([]byte(twiml.Gather(sayPhone(phone)+" is currently an admin. Press 1 to demote to responder, or hang up to cancel.", h.BaseURL+"/twilio/voice/gather", 1)))
+	} else {
+		sess.State.Pending["action"] = "promote"
+		h.Sessions.Upsert(ctx, sess)
+		w.Write([]byte(twiml.Gather(sayPhone(phone)+" is currently a responder. Press 1 to promote to admin, or hang up to cancel.", h.BaseURL+"/twilio/voice/gather", 1)))
+	}
 }
 
-func (h *GatherHandler) handleAdminConfirmPIN(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
+func (h *GatherHandler) handleAdminToggleAdminConfirm(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
 	ctx := r.Context()
-	newPIN := sess.State.Pending["new_pin"]
-	if digits != newPIN {
+	if digits != "1" {
 		sess.State.Step = "admin_menu"
-		sess.State.Pending = map[string]string{}
 		h.Sessions.Upsert(ctx, sess)
-		w.Write([]byte(twiml.Gather("PINs did not match. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
+		w.Write([]byte(twiml.Gather("Cancelled. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
 		return
 	}
-	if err := h.Responders.UpdatePIN(ctx, sess.Caller, newPIN); err != nil {
-		log.Printf("update pin: %v", err)
-		sess.State.Step = "admin_menu"
-		sess.State.Pending = map[string]string{}
-		h.Sessions.Upsert(ctx, sess)
-		w.Write([]byte(twiml.Gather("Error updating PIN. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
-		return
-	}
+	phone := sess.State.Pending["phone"]
+	action := sess.State.Pending["action"]
 	sess.State.Step = "admin_menu"
 	sess.State.Pending = map[string]string{}
 	h.Sessions.Upsert(ctx, sess)
-	w.Write([]byte(twiml.Gather("Your PIN has been updated. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
-}
 
-func (h *GatherHandler) handleAdminPromoteNumber(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
-	ctx := r.Context()
-	phone := normalizePhone(digits)
-	if err := h.Responders.SetAdmin(ctx, phone, true); err != nil {
-		log.Printf("promote admin: %v", err)
-		sess.State.Step = "admin_menu"
-		h.Sessions.Upsert(ctx, sess)
-		w.Write([]byte(twiml.Gather("Error promoting responder. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
-		return
+	switch action {
+	case "promote":
+		if err := h.Responders.SetAdmin(ctx, phone, true); err != nil {
+			log.Printf("promote admin: %v", err)
+			w.Write([]byte(twiml.Gather("Error promoting responder. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
+			return
+		}
+		w.Write([]byte(twiml.Gather(sayPhone(phone)+" is now an admin. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
+	case "demote":
+		if err := h.Responders.SetAdmin(ctx, phone, false); err != nil {
+			log.Printf("demote admin: %v", err)
+			w.Write([]byte(twiml.Gather("Error demoting admin. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
+			return
+		}
+		w.Write([]byte(twiml.Gather(sayPhone(phone)+" is now a responder. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
+	default:
+		w.Write([]byte(twiml.Gather("Unknown action. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
 	}
-	sess.State.Step = "admin_menu"
-	h.Sessions.Upsert(ctx, sess)
-	w.Write([]byte(twiml.Gather(sayPhone(phone)+" is now an admin. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
-}
-
-func (h *GatherHandler) handleAdminDemoteNumber(w http.ResponseWriter, r *http.Request, sess *store.Session, digits string) {
-	ctx := r.Context()
-	phone := normalizePhone(digits)
-	if err := h.Responders.SetAdmin(ctx, phone, false); err != nil {
-		log.Printf("demote admin: %v", err)
-		sess.State.Step = "admin_menu"
-		h.Sessions.Upsert(ctx, sess)
-		w.Write([]byte(twiml.Gather("Error demoting admin. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
-		return
-	}
-	sess.State.Step = "admin_menu"
-	h.Sessions.Upsert(ctx, sess)
-	w.Write([]byte(twiml.Gather(sayPhone(phone)+" is now a responder. "+adminMenuPrompt(), h.BaseURL+"/twilio/voice/gather", 1)))
 }
 
 // isValidUSPhone returns true if digits is exactly 10 numeric characters.
