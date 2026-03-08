@@ -1,0 +1,1 @@
+ALTER TABLE responders DROP COLUMN IF EXISTS name;

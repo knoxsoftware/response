@@ -293,7 +293,7 @@ func (h *GatherHandler) handleAdminAddRemoveNumber(w http.ResponseWriter, r *htt
 		sess.State.Pending["action"] = "add"
 		sess.State.Step = "admin_add_remove_confirm"
 		h.Sessions.Upsert(ctx, sess)
-		w.Write([]byte(twiml.Gather("Press 1 to add "+sayPhone(phone)+", or hang up to cancel.", h.BaseURL+"/twilio/voice/gather", 1)))
+		w.Write([]byte(twiml.Gather(sayPhone(phone)+"is not already a member. Press 1 to add them or hang up to cancel.", h.BaseURL+"/twilio/voice/gather", 1)))
 	} else {
 		_ = existing
 		// Found — offer to remove

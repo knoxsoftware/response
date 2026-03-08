@@ -1,0 +1,1 @@
+ALTER TABLE responders ADD COLUMN IF NOT EXISTS pin_hash TEXT;
