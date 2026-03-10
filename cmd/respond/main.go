@@ -47,22 +47,21 @@ func main() {
 		Sessions:   sessions,
 		BaseURL:    cfg.BaseURL,
 	}
-
 	gatherHandler := &handler.GatherHandler{
 		Responders: responders,
 		Sessions:   sessions,
 		BaseURL:    cfg.BaseURL,
 	}
-
 	statusHandler := &handler.StatusHandler{Sessions: sessions}
 
-	mux := http.NewServeMux()
-	twilioMW := func(h http.Handler) http.Handler {
-		return middleware.TwilioAuth(cfg.TwilioAuthToken, h)
+	fsMW := func(h http.Handler) http.Handler {
+		return middleware.FSAuth(cfg.FSSharedSecret, h)
 	}
-	mux.Handle("/twilio/voice", twilioMW(voiceHandler))
-	mux.Handle("/twilio/voice/gather", twilioMW(gatherHandler))
-	mux.Handle("/twilio/status", twilioMW(statusHandler))
+
+	mux := http.NewServeMux()
+	mux.Handle("/fs/voice", fsMW(voiceHandler))
+	mux.Handle("/fs/gather", fsMW(gatherHandler))
+	mux.Handle("/fs/status", fsMW(statusHandler))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
