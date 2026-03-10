@@ -2,7 +2,6 @@ package sms_test
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -17,7 +16,7 @@ func (m *mockSMSStore) GetNode(ctx context.Context, phone string) (string, error
 	if n, ok := m.nodes[phone]; ok {
 		return n, nil
 	}
-	return "", fmt.Errorf("not found")
+	return "", sms.ErrSessionNotFound
 }
 func (m *mockSMSStore) Upsert(ctx context.Context, phone, node string) error {
 	m.nodes[phone] = node

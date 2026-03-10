@@ -2,6 +2,7 @@ package sms
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -31,6 +32,9 @@ func NewEngine(tree *Tree, store SMSStore) *Engine {
 func (e *Engine) Handle(ctx context.Context, phone, body string) (*Response, error) {
 	currentNode, err := e.store.GetNode(ctx, phone)
 	if err != nil {
+		if !errors.Is(err, ErrSessionNotFound) {
+			return nil, fmt.Errorf("get session: %w", err)
+		}
 		// No session — start at root
 		if err := e.store.Upsert(ctx, phone, "root"); err != nil {
 			return nil, fmt.Errorf("create session: %w", err)
@@ -41,15 +45,21 @@ func (e *Engine) Handle(ctx context.Context, phone, body string) (*Response, err
 
 	node, ok := e.tree.Nodes[currentNode]
 	if !ok {
-		e.store.Delete(ctx, phone)
+		if err := e.store.Delete(ctx, phone); err != nil {
+			return nil, fmt.Errorf("delete corrupt session: %w", err)
+		}
 		return &Response{Message: "Sorry, something went wrong. " + e.tree.Greeting}, nil
 	}
 
 	if node.IsTerminal() {
 		// Already at terminal — reset and re-greet
-		e.store.Delete(ctx, phone)
+		if err := e.store.Delete(ctx, phone); err != nil {
+			return nil, fmt.Errorf("delete terminal session: %w", err)
+		}
 		root := e.tree.Nodes["root"]
-		e.store.Upsert(ctx, phone, "root")
+		if err := e.store.Upsert(ctx, phone, "root"); err != nil {
+			return nil, fmt.Errorf("reset session: %w", err)
+		}
 		return &Response{Message: e.tree.Greeting + "\n" + root.Prompt}, nil
 	}
 
@@ -71,7 +81,9 @@ func (e *Engine) Handle(ctx context.Context, phone, body string) (*Response, err
 
 	next := e.tree.Nodes[nextKey]
 	if next.IsTerminal() {
-		e.store.Delete(ctx, phone)
+		if err := e.store.Delete(ctx, phone); err != nil {
+			return nil, fmt.Errorf("delete session: %w", err)
+		}
 		return &Response{
 			Message:  next.Response,
 			Terminal: true,
@@ -79,6 +91,8 @@ func (e *Engine) Handle(ctx context.Context, phone, body string) (*Response, err
 		}, nil
 	}
 
-	e.store.Upsert(ctx, phone, nextKey)
+	if err := e.store.Upsert(ctx, phone, nextKey); err != nil {
+		return nil, fmt.Errorf("advance session: %w", err)
+	}
 	return &Response{Message: next.Prompt}, nil
 }
