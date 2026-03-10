@@ -32,3 +32,17 @@ func TestSendSMS(t *testing.T) {
 		t.Errorf("expected dst=15005551234, got %s", gotDst)
 	}
 }
+
+func TestSendSMS_APIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"no_sms"}`))
+	}))
+	defer srv.Close()
+
+	c := voipms.NewClient("user", "pass", "5005550000", srv.URL)
+	err := c.SendSMS(context.Background(), "+15005551234", "Hello")
+	if err == nil {
+		t.Error("expected error for non-success status, got nil")
+	}
+}

@@ -52,7 +52,7 @@ func (c *Client) SendSMS(ctx context.Context, to, message string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("voipms api: status %d: %s", resp.StatusCode, body)
 	}
-	if strings.Contains(string(body), `"status":"invalid`) {
+	if !strings.Contains(string(body), `"status":"success"`) {
 		return fmt.Errorf("voipms api error: %s", body)
 	}
 	return nil
