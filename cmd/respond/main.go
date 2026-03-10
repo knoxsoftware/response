@@ -4,12 +4,15 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/mattventura/respond/internal/config"
 	"github.com/mattventura/respond/internal/db"
 	"github.com/mattventura/respond/internal/handler"
 	"github.com/mattventura/respond/internal/middleware"
+	"github.com/mattventura/respond/internal/sms"
 	"github.com/mattventura/respond/internal/store"
+	"github.com/mattventura/respond/internal/voipms"
 )
 
 func main() {
@@ -42,6 +45,26 @@ func main() {
 		}
 	}
 
+	// SMS tree
+	treeFile, err := os.Open(cfg.SMSTreePath)
+	if err != nil {
+		log.Fatalf("open sms tree: %v", err)
+	}
+	tree, err := sms.LoadTree(treeFile)
+	treeFile.Close()
+	if err != nil {
+		log.Fatalf("load sms tree: %v", err)
+	}
+
+	smsStore := store.NewSMSSessionStore(pool)
+	voipmsClient := voipms.NewClient(cfg.VoIPMSUsername, cfg.VoIPMSPassword, cfg.VoIPMSDID, "")
+	smsEngine := sms.NewEngine(tree, smsStore)
+	smsHandler := &handler.SMSHandler{
+		Engine:     smsEngine,
+		Sender:     voipmsClient,
+		Responders: responders,
+	}
+
 	voiceHandler := &handler.VoiceHandler{
 		Responders: responders,
 		Sessions:   sessions,
@@ -59,6 +82,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	mux.Handle("/sms/inbound", smsHandler)
 	mux.Handle("/fs/voice", fsMW(voiceHandler))
 	mux.Handle("/fs/gather", fsMW(gatherHandler))
 	mux.Handle("/fs/status", fsMW(statusHandler))
