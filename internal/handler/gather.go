@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,9 +11,31 @@ import (
 	"github.com/mattventura/respond/internal/store"
 )
 
+// responderStore defines the responder persistence operations used by handlers.
+type responderStore interface {
+	FindByPhone(ctx context.Context, phone string) (*store.Responder, error)
+	ListAvailable(ctx context.Context) ([]store.Responder, error)
+	ListAll(ctx context.Context) ([]store.Responder, error)
+	SetPIN(ctx context.Context, phone, pin string) error
+	SetValidated(ctx context.Context, phone string) error
+	ToggleAvailable(ctx context.Context, phone string) (bool, error)
+	UpdatePIN(ctx context.Context, phone, pin string) error
+	Create(ctx context.Context, phone string) error
+	Delete(ctx context.Context, phone string) error
+	CountByAvailability(ctx context.Context) (int, int, error)
+	SetAdmin(ctx context.Context, phone string, isAdmin bool) error
+}
+
+// sessionStore defines the session persistence operations used by handlers.
+type sessionStore interface {
+	Get(ctx context.Context, callSid string) (*store.Session, error)
+	Upsert(ctx context.Context, sess *store.Session) error
+	Delete(ctx context.Context, callSid string) error
+}
+
 type GatherHandler struct {
-	Responders *store.ResponderStore
-	Sessions   *store.SessionStore
+	Responders responderStore
+	Sessions   sessionStore
 	BaseURL    string
 }
 

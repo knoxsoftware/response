@@ -10,8 +10,8 @@ import (
 )
 
 type VoiceHandler struct {
-	Responders *store.ResponderStore
-	Sessions   *store.SessionStore
+	Responders responderStore
+	Sessions   sessionStore
 	BaseURL    string
 }
 
