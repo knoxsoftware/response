@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/mattventura/respond/internal/store"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // mockResponderStore is an in-memory responderStore for handler tests.
@@ -25,7 +26,8 @@ func (m *mockResponderStore) FindByPhone(_ context.Context, phone string) (*stor
 	if !ok {
 		return nil, fmt.Errorf("not found")
 	}
-	return r, nil
+	cp := *r
+	return &cp, nil
 }
 
 func (m *mockResponderStore) ListAvailable(_ context.Context) ([]store.Responder, error) {
@@ -51,7 +53,12 @@ func (m *mockResponderStore) SetPIN(_ context.Context, phone, pin string) error 
 	if !ok {
 		return fmt.Errorf("not found")
 	}
-	r.PinHash = &pin
+	hash, err := bcrypt.GenerateFromPassword([]byte(pin), bcrypt.MinCost)
+	if err != nil {
+		return err
+	}
+	s := string(hash)
+	r.PinHash = &s
 	return nil
 }
 
@@ -78,7 +85,12 @@ func (m *mockResponderStore) UpdatePIN(_ context.Context, phone, pin string) err
 	if !ok {
 		return fmt.Errorf("not found")
 	}
-	r.PinHash = &pin
+	hash, err := bcrypt.GenerateFromPassword([]byte(pin), bcrypt.MinCost)
+	if err != nil {
+		return err
+	}
+	s := string(hash)
+	r.PinHash = &s
 	return nil
 }
 
