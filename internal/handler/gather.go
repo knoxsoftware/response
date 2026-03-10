@@ -22,9 +22,9 @@ func (h *GatherHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	callSid := r.FormValue("Unique-ID")
-	digits := r.FormValue("pin_input")
+	digits := sanitizeDigits(r.FormValue("pin_input"), 128)
 	if digits == "" {
-		digits = r.FormValue("menu_input")
+		digits = sanitizeDigits(r.FormValue("menu_input"), 1)
 	}
 	callStatus := r.FormValue("CallStatus")
 	ctx := r.Context()
@@ -453,6 +453,21 @@ func normalizePhone(digits string) string {
 		return "+1" + digits
 	}
 	return "+" + digits
+}
+
+// sanitizeDigits strips all non-digit characters and truncates to maxLen.
+// This prevents overly long or malformed input from reaching bcrypt or DB queries.
+func sanitizeDigits(s string, maxLen int) string {
+	var b strings.Builder
+	for _, c := range s {
+		if c >= '0' && c <= '9' {
+			b.WriteRune(c)
+			if b.Len() == maxLen {
+				break
+			}
+		}
+	}
+	return b.String()
 }
 
 // sayPhone formats an E.164 number for TTS so each digit is read individually,
