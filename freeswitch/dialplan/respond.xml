@@ -1,0 +1,11 @@
+<include>
+  <context name="public">
+    <extension name="inbound-respond">
+      <condition field="destination_number" expression="^\+?1?(\d{10})$">
+        <action application="set" data="hangup_after_bridge=true"/>
+        <action application="answer"/>
+        <!-- mod_xml_curl fetches dialplan from the Go app -->
+      </condition>
+    </extension>
+  </context>
+</include>

@@ -1,0 +1,20 @@
+<configuration name="xml_curl.conf" description="XML Curl">
+  <bindings>
+    <binding name="respond-dialplan">
+      <!-- Replace YOUR_APP_URL with the public URL of the Go app -->
+      <param name="gateway-url" value="https://YOUR_APP_URL/fs/voice"/>
+      <param name="bindings" value="dialplan"/>
+      <param name="method" value="POST"/>
+      <param name="disable-100-continue" value="true"/>
+      <param name="timeout" value="10000"/>
+      <param name="enable-cacert-check" value="true"/>
+      <!--
+        NOTE: mod_xml_curl does not support custom headers natively.
+        Secure /fs/* endpoints by restricting access at the network/firewall
+        level to the FreeSWITCH VPS IP only. The FS_SHARED_SECRET env var
+        can be set to the FreeSWITCH VPS IP for IP-based validation,
+        or remove FSAuth middleware on /fs/* and rely on network policy.
+      -->
+    </binding>
+  </bindings>
+</configuration>

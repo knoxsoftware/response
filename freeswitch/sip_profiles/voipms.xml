@@ -1,0 +1,9 @@
+<include>
+  <gateway name="voipms">
+    <param name="username" value="YOUR_VOIPMS_USERNAME"/>
+    <param name="password" value="YOUR_VOIPMS_PASSWORD"/>
+    <param name="proxy" value="denver.voip.ms"/>
+    <param name="register" value="true"/>
+    <param name="caller-id-in-from" value="true"/>
+  </gateway>
+</include>
