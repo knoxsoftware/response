@@ -18,6 +18,7 @@ func TestSanitizeDigits(t *testing.T) {
 		{"", 10, ""},
 		{"!@#$%", 10, ""},
 		{"123456789012345", 10, "1234567890"},
+		{"1234", 0, ""},   // zero maxLen returns empty
 	}
 	for _, tt := range tests {
 		got := sanitizeDigits(tt.input, tt.maxLen)

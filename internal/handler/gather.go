@@ -458,6 +458,9 @@ func normalizePhone(digits string) string {
 // sanitizeDigits strips all non-digit characters and truncates to maxLen.
 // This prevents overly long or malformed input from reaching bcrypt or DB queries.
 func sanitizeDigits(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
 	var b strings.Builder
 	for _, c := range s {
 		if c >= '0' && c <= '9' {
