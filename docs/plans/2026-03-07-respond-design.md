@@ -1,7 +1,7 @@
 # Respond Service — Design Document
 
 **Date:** 2026-03-07
-**Status:** Approved
+**Status:** Superseded by [2026-03-10-freeswitch-migration-design.md](2026-03-10-freeswitch-migration-design.md)
 
 ## Overview
 
