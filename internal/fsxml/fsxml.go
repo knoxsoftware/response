@@ -24,7 +24,7 @@ func Gather(msg, varName, actionURL string, numDigits int) string {
 		terminator = "none"
 	}
 	data := fmt.Sprintf("%s %s 3 10000 say:%s %s %s \\d+ 5000 say:Invalid input",
-		min, max, xmlEscape(msg), terminator, varName)
+		min, max, xmlEscape(msg), terminator, xmlEscape(varName))
 	return wrap(
 		action("play_and_get_digits", data),
 		action("transfer", xmlEscape(actionURL)),
