@@ -6,4 +6,4 @@ metadata:
     app: {{ include "respond.name" . }}
 data:
   sms-tree.yaml: |
-{{ .Values.smsTree.content | indent 4 }}
+    {{- .Values.smsTree.content | nindent 4 }}
