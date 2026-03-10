@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/mattventura/respond/internal/config"
 	"github.com/mattventura/respond/internal/db"
@@ -89,6 +90,21 @@ func main() {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+
+	// Start background SMS session expiry
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		timeout := time.Duration(tree.TimeoutMinutes) * time.Minute
+		for range ticker.C {
+			n, err := smsStore.DeleteExpired(context.Background(), timeout)
+			if err != nil {
+				log.Printf("sms session expiry: %v", err)
+			} else if n > 0 {
+				log.Printf("sms session expiry: deleted %d expired sessions", n)
+			}
+		}
+	}()
 
 	log.Printf("listening on :%s", cfg.Port)
 	if err := http.ListenAndServe(":"+cfg.Port, mux); err != nil {
