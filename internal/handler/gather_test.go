@@ -105,6 +105,12 @@ func TestGather_ConfirmPIN_Match_SavesPINAndShowsMenu(t *testing.T) {
 	if !strings.Contains(body, "available") && !strings.Contains(body, "unavailable") {
 		t.Errorf("expected responder menu, got: %s", body)
 	}
+	if responder.PinHash == nil {
+		t.Error("expected PIN hash to be set on responder")
+	}
+	if !responder.IsValidated {
+		t.Error("expected responder to be marked validated")
+	}
 }
 
 // PIN verification flow
@@ -159,10 +165,14 @@ func TestGather_ResponderMenu_1_TogglesAvailability(t *testing.T) {
 	sessions.Upsert(nil, makeSession("call-1", "+15551111111", "responder_menu"))
 	h := newGatherHandler(responders, sessions)
 
-	postGather(h, "call-1", "", "1")
+	rr := postGather(h, "call-1", "", "1")
 
 	if responder.Available != true {
 		t.Error("expected Available to be toggled to true")
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "available") {
+		t.Errorf("expected availability confirmation in response, got: %s", body)
 	}
 }
 
