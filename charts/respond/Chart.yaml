@@ -1,5 +1,5 @@
 apiVersion: v2
 name: respond
-description: Twilio-based on-call responder service
-version: 0.1.0
-appVersion: "0.1.0"
+description: On-call responder service using FreeSWITCH and VoIP.ms
+version: 0.2.0
+appVersion: "0.2.0"

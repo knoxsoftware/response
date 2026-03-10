@@ -3,12 +3,10 @@ package handler
 import (
 	"log"
 	"net/http"
-
-	"github.com/mattventura/respond/internal/store"
 )
 
 type StatusHandler struct {
-	Sessions *store.SessionStore
+	Sessions sessionStore
 }
 
 func (h *StatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

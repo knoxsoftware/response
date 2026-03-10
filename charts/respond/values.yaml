@@ -20,9 +20,27 @@ config:
   port: "8080"
 
 secrets:
-  # databaseUrl: ""      # Optional: overrides the CNPG-generated database URL when database.enabled=true, or required when database.enabled=false
-  twilioAuthToken: ""
-  # bootstrapAdmins: ""  # Optional: comma-separated phone:pin pairs to seed on startup, e.g. "+15551234567:1234,+15559876543:5678"
+  # databaseUrl: ""      # Optional: overrides CNPG-generated URL
+  fsSharedSecret: ""     # Shared secret for FreeSWITCH webhook validation
+  voipmsUsername: ""     # VoIP.ms API username
+  voipmsPassword: ""     # VoIP.ms API password
+  voipmsDid: ""          # VoIP.ms DID for outbound SMS
+  # bootstrapAdmins: ""  # Optional: comma-separated phone:pin pairs
+
+smsTree:
+  content: |
+    greeting: "Hi! How can we help? Reply with a number."
+    timeout_minutes: 30
+    nodes:
+      root:
+        prompt: "Press 1 for option A, 2 for option B."
+        options:
+          "1": node_a
+          "2": node_b
+      node_a:
+        response: "For option A, please call our main line."
+      node_b:
+        response: "Please email support@example.com."
 
 serviceAccount:
   create: true

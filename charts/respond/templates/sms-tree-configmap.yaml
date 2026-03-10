@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "respond.name" . }}-sms-tree
+  labels:
+    app: {{ include "respond.name" . }}
+data:
+  sms-tree.yaml: |
+    {{- .Values.smsTree.content | nindent 4 }}

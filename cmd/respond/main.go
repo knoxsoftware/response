@@ -4,12 +4,16 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/mattventura/respond/internal/config"
 	"github.com/mattventura/respond/internal/db"
 	"github.com/mattventura/respond/internal/handler"
 	"github.com/mattventura/respond/internal/middleware"
+	"github.com/mattventura/respond/internal/sms"
 	"github.com/mattventura/respond/internal/store"
+	"github.com/mattventura/respond/internal/voipms"
 )
 
 func main() {
@@ -42,30 +46,65 @@ func main() {
 		}
 	}
 
+	// SMS tree
+	treeFile, err := os.Open(cfg.SMSTreePath)
+	if err != nil {
+		log.Fatalf("open sms tree: %v", err)
+	}
+	tree, err := sms.LoadTree(treeFile)
+	treeFile.Close()
+	if err != nil {
+		log.Fatalf("load sms tree: %v", err)
+	}
+
+	smsStore := store.NewSMSSessionStore(pool)
+	voipmsClient := voipms.NewClient(cfg.VoIPMSUsername, cfg.VoIPMSPassword, cfg.VoIPMSDID, "")
+	smsEngine := sms.NewEngine(tree, smsStore)
+	smsHandler := &handler.SMSHandler{
+		Engine:     smsEngine,
+		Sender:     voipmsClient,
+		Responders: responders,
+	}
+
 	voiceHandler := &handler.VoiceHandler{
 		Responders: responders,
 		Sessions:   sessions,
 		BaseURL:    cfg.BaseURL,
 	}
-
 	gatherHandler := &handler.GatherHandler{
 		Responders: responders,
 		Sessions:   sessions,
 		BaseURL:    cfg.BaseURL,
 	}
-
 	statusHandler := &handler.StatusHandler{Sessions: sessions}
 
-	mux := http.NewServeMux()
-	twilioMW := func(h http.Handler) http.Handler {
-		return middleware.TwilioAuth(cfg.TwilioAuthToken, h)
+	fsMW := func(h http.Handler) http.Handler {
+		return middleware.FSAuth(cfg.FSSharedSecret, h)
 	}
-	mux.Handle("/twilio/voice", twilioMW(voiceHandler))
-	mux.Handle("/twilio/voice/gather", twilioMW(gatherHandler))
-	mux.Handle("/twilio/status", twilioMW(statusHandler))
+
+	mux := http.NewServeMux()
+	mux.Handle("/sms/inbound", smsHandler)
+	mux.Handle("/fs/voice", fsMW(voiceHandler))
+	mux.Handle("/fs/gather", fsMW(gatherHandler))
+	mux.Handle("/fs/status", fsMW(statusHandler))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+
+	// Start background SMS session expiry
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		timeout := time.Duration(tree.TimeoutMinutes) * time.Minute
+		for range ticker.C {
+			n, err := smsStore.DeleteExpired(context.Background(), timeout)
+			if err != nil {
+				log.Printf("sms session expiry: %v", err)
+			} else if n > 0 {
+				log.Printf("sms session expiry: deleted %d expired sessions", n)
+			}
+		}
+	}()
 
 	log.Printf("listening on :%s", cfg.Port)
 	if err := http.ListenAndServe(":"+cfg.Port, mux); err != nil {

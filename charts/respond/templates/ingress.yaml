@@ -13,8 +13,22 @@ spec:
     - host: {{ .Values.ingress.host }}
       http:
         paths:
-          - path: /twilio
+          - path: /fs
             pathType: Prefix
+            backend:
+              service:
+                name: {{ include "respond.name" . }}
+                port:
+                  number: {{ .Values.service.port }}
+          - path: /sms
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "respond.name" . }}
+                port:
+                  number: {{ .Values.service.port }}
+          - path: /healthz
+            pathType: Exact
             backend:
               service:
                 name: {{ include "respond.name" . }}

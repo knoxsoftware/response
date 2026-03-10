@@ -15,6 +15,10 @@ spec:
         rollme: {{ .Release.Revision | quote }}
     spec:
       serviceAccountName: {{ include "respond.serviceAccountName" . }}
+      volumes:
+        - name: sms-tree
+          configMap:
+            name: {{ include "respond.name" . }}-sms-tree
       containers:
         - name: respond
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -35,6 +39,12 @@ spec:
               value: {{ .Values.config.baseUrl | quote }}
             - name: PORT
               value: {{ .Values.config.port | quote }}
+            - name: SMS_TREE_PATH
+              value: /config/sms-tree.yaml
+          volumeMounts:
+            - name: sms-tree
+              mountPath: /config
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /healthz

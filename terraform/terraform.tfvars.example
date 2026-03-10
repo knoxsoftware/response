@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and fill in values
+# Never commit terraform.tfvars to git
+
+do_token     = "dop_v1_..."
+ssh_key_name = "my-key"          # Must match name in DO account
+region       = "nyc3"            # Closest to your VoIP.ms POP
+environment  = "prod"
+
+# Restrict SSH to your IP for better security
+ssh_allowed_cidrs = ["1.2.3.4/32"]
+
+# Lock down to your specific VoIP.ms POP IP once confirmed
+# voipms_cidrs = ["198.27.67.0/24"]
